@@ -2,7 +2,7 @@
   "name": "pwdr",
   "author": "Apollo917",
   "homepage": "https://github.com/Apollo917/pwdr",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "license": "MIT",
   "description": "A utility for generating deterministic passwords based on a phrase and key",
   "maintainers": [

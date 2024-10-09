@@ -49,5 +49,5 @@ const pwd = await generatePwd('phrase', 'key');
 
 ### 🏷️ Versions
 
-- **v1.0.0**
+- **v <= 1.0.1**
     - output: `1e9/wtB["D0NS/oCa/ra9p,v'NHBT4GQ`
