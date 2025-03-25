@@ -1,21 +1,67 @@
 'use strict';
 
-import crypto from 'node:crypto';
+// Types
 
-type Encoding = 'base64' | 'hex';
+/**
+ * Configuration options for password generation
+ */
+export interface GeneratePwdOptions {
+  /**
+   * Desired password length.
+   * <br>
+   * Must be between 16 and 64 characters
+   * @default 32
+   */
+  length?: number;
+  /**
+   * Number of key derivation iterations
+   * <br>
+   * Higher iterations increase computational complexity and security
+   * <br>
+   * Minimum 100,000, recommended 1,000,000+
+   * @default 1,000,000
+   */
+  iterations?: number;
+  /**
+   * Cryptographic salt to enhance key derivation
+   * <br>
+   * Provides additional protection against rainbow table attacks
+   * @default 'pwdr-default-salt' (UTF-8 encoded)
+   */
+  salt?: Uint8Array;
+}
+
 type NormalizeNum = (value: number, min?: number, max?: number) => number;
-type IsBlank = (val?: string | null) => boolean;
-type Hash = (data: string, encoding?: Encoding) => Promise<string>;
-type Slice = (str: string, sliceSize: number) => string[];
-type AppendWithChar = (val: string, offset: number) => string;
-type GenerateKeyOffsets = (key: string) => Promise<number[]>;
-type GenerateSeed = (phrase: string, minLength: number) => Promise<string>;
-export type GeneratePwd = (phrase: string, key: string, length?: number) => Promise<string>;
+type Erase = (...buffers: Uint8Array[]) => void;
+type ConvertToPwd = (pwdSeed: Uint8Array, length: number) => Uint8Array;
+export type GeneratePwd = (phrase: Uint8Array, key: Uint8Array, options?: GeneratePwdOptions) => Promise<Uint8Array>;
 
-const CHARS = `!"#$%&'()*+,-./:;<=>?@[\]^_~{|}~`;
-const MAX_OFFSET = 20_000;
-const PWD_CHUNK_SIZE = 4;
+// Constants
 
+/** Minimum allowed password length */
+const MIN_PWD_LENGTH = 16;
+
+/** Maximum allowed password length */
+const MAX_PWD_LENGTH = 64;
+
+/** Key derivation algorithm used for secure key generation */
+const KEY_DERIVATIONS_ALGORITHM = 'PBKDF2';
+
+/** Cryptographic hashing algorithm for enhanced security */
+const HASHING_ALGORITHM = 'SHA-512';
+
+/** Signing algorithm for message authentication */
+const SIGNING_ALGORITHM = 'HMAC';
+
+// Functions
+
+/**
+ * Normalizes a numeric value within specified bounds
+ * @param value Input numeric value to normalize
+ * @param min Minimum allowed value
+ * @param max Maximum allowed value
+ * @returns Normalized numeric value
+ */
 const normalizeNum: NormalizeNum = (value = 0, min, max) => {
   min = min ?? Number.MIN_SAFE_INTEGER;
   max = max ?? Number.MAX_SAFE_INTEGER;
@@ -27,60 +73,90 @@ const normalizeNum: NormalizeNum = (value = 0, min, max) => {
   return value;
 };
 
-const isBlank: IsBlank = (val) => {
-  return val === undefined || val === null || val === '' || val.trim() === '';
+/**
+ * Securely erases sensitive buffer contents by filling with zeros
+ * <br>
+ * Helps prevent sensitive data from lingering in memory
+ * @param buffers One or more Uint8Array buffers to erase
+ */
+export const erase: Erase = (...buffers) => {
+  buffers.filter((b) => !!b).forEach((b) => b.fill(0));
 };
 
-const hash: Hash = async (data, encoding = 'base64') => {
-  return crypto.createHash('sha512').update(data).digest(encoding);
+/**
+ * Converts a cryptographic seed to a password using character set rotation
+ * <br>
+ * Ensures password includes diverse character types
+ * @param pwdSeed Cryptographic seed for password generation
+ * @param length Desired password length
+ * @returns Generated password as Uint8Array
+ */
+const convertToPwd: ConvertToPwd = (pwdSeed, length) => {
+  const charsets = [
+    'ABCDEFGHIJKLMNOPQRSTUVWXYZ',
+    'abcdefghijklmnopqrstuvwxyz',
+    '!@#$%^&*()-_=+[]{}|;:,.<>?',
+    '0123456789',
+  ];
+  const result = new Uint8Array(length);
+
+  pwdSeed.forEach((num, i) => {
+    const charsetIndex = i % charsets.length;
+    const charset = charsets[charsetIndex];
+    result[i] = charset.charAt(num % charset.length).charCodeAt(0);
+  });
+
+  erase(pwdSeed);
+
+  return result;
 };
 
-const slice: Slice = (str, sliceSize) => {
-  sliceSize = normalizeNum(sliceSize, 1);
-  return str.match(new RegExp(`.{1,${sliceSize}}`, 'g')) ?? [];
-};
+/**
+ * Generates a deterministic, cryptographically secure password.
+ * <br>
+ * Consider erasing the phrase, key, salt and result after usage
+ *
+ * @param phrase Secret user passphrase
+ * @param key Application-specific secret key
+ * @param options Optional configuration for password generation
+ * @returns Promise resolving to cryptographically generated password
+ * @throws Error if phrase or key are missing
+ */
+export const generatePwd: GeneratePwd = async (phrase, key, options) => {
+  if (!phrase || !phrase.length || !key || !key.length) {
+    erase(phrase, key);
+    throw new Error('Phrase and key are required');
+  }
 
-const appendWithChar: AppendWithChar = (str, offset) => {
-  return str + CHARS.charAt(Math.abs(offset) % CHARS.length);
-};
+  return await (async (): Promise<Uint8Array> => {
+    const encoder = new TextEncoder();
+    const safePhrase = new Uint8Array(phrase);
+    const safeKey = new Uint8Array(key);
+    const safeSalt = options?.salt ? new Uint8Array(options.salt) : encoder.encode('pwdr-default-salt');
+    const pwdLength = normalizeNum(options?.length ?? 32, MIN_PWD_LENGTH, MAX_PWD_LENGTH);
+    const baseKey = await crypto.subtle.importKey('raw', safePhrase, KEY_DERIVATIONS_ALGORITHM, false, ['deriveKey']);
 
-const generateKeyOffsets: GenerateKeyOffsets = async (key) => {
-  return await hash(key)
-    .then((hash) => slice(hash, 4))
-    .then((slices) => Promise.all(slices.map((slice) => hash(slice, 'hex'))))
-    .then((hashes) => hashes.map((hash) => Number.parseInt(hash.slice(0, 8), 16)))
-    .then((offsets) => offsets.map((offset) => Math.floor((offset / 0xffffffff) * MAX_OFFSET)));
-};
+    erase(safePhrase);
 
-const generateSeed: GenerateSeed = async (phrase, minLength) => {
-  const sliceSize = 4;
-  const seed = await hash(phrase)
-    .then((hash) => slice(hash, sliceSize))
-    .then((slices) => slices.map(appendWithChar))
-    .then((slices) => Promise.all(slices.map((slice) => hash(slice))))
-    .then((hashes) => hashes.flatMap((hash) => slice(hash, sliceSize)))
-    .then((slices) => slices.map(appendWithChar))
-    .then((slices) => slices.join(''));
+    const derivedKey = await crypto.subtle.deriveKey(
+      {
+        name: KEY_DERIVATIONS_ALGORITHM,
+        salt: safeSalt,
+        iterations: normalizeNum(options?.iterations ?? 1_000_000, 100_000),
+        hash: HASHING_ALGORITHM,
+      },
+      baseKey,
+      { name: SIGNING_ALGORITHM, hash: HASHING_ALGORITHM, length: 256 },
+      false,
+      ['sign'],
+    );
 
-  return seed.length >= minLength ? seed : seed + (await generateSeed(seed, minLength - seed.length));
-};
+    erase(safeSalt);
 
-export const generatePwd: GeneratePwd = async (phrase, key, length = 32) => {
-  if (isBlank(phrase)) throw new Error('Phrase is required');
-  if (isBlank(key)) throw new Error('Key is required');
+    const signature = await crypto.subtle.sign(SIGNING_ALGORITHM, derivedKey, safeKey);
 
-  phrase = phrase.trim();
-  key = key.trim();
-  length = normalizeNum(length ?? 32, 16, 64);
+    erase(safeKey);
 
-  const offsets = await generateKeyOffsets(key);
-  const lastPwdChunkSize = PWD_CHUNK_SIZE + (length % PWD_CHUNK_SIZE);
-  const minSeedLength = Math.max(...offsets) + lastPwdChunkSize;
-  const seed = await generateSeed(phrase + key, minSeedLength);
-  const lastOffsetIndex = 0;
-
-  return offsets
-    .map((offset, i) => seed.slice(offset, offset + (i === lastOffsetIndex ? lastPwdChunkSize : PWD_CHUNK_SIZE)))
-    .join('')
-    .slice(0, length);
+    return Promise.resolve(convertToPwd(new Uint8Array(signature), pwdLength));
+  })();
 };

@@ -2,9 +2,8 @@ module.exports = {
     parser: '@typescript-eslint/parser',
     parserOptions: {
         ecmaVersion: 'latest',
-        sourceType: 'commonjs',
         tsconfigRootDir: __dirname,
-        project: ['./tsconfig.cjs.json', './tsconfig.test.json'],
+        project: ['./tsconfig.src.json', './tsconfig.test.json'],
         ecmaFeatures: {
             impliedStrict: true
         }
