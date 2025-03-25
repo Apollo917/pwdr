@@ -5,9 +5,11 @@
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "target": "ESNext",
-    "moduleResolution": "Node",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
     "lib": [
-      "ESNext"
+      "ESNext",
+      "DOM"
     ]
   }
 }

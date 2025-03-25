@@ -2,9 +2,9 @@
   "name": "pwdr",
   "author": "Apollo917",
   "homepage": "https://github.com/Apollo917/pwdr",
-  "version": "1.0.1",
+  "version": "2.0.0",
   "license": "MIT",
-  "description": "A utility for generating deterministic passwords based on a phrase and key",
+  "description": "A utility for generating deterministic passwords using a phrase and key",
   "maintainers": [
     {
       "name": "Apollo917",
@@ -23,17 +23,13 @@
     "type": "git",
     "url": "git+https://github.com/Apollo917/pwdr.git"
   },
-  "type": "commonjs",
-  "main": "./dist/cjs/index.cjs",
-  "module": "./dist/esm/index.mjs",
-  "types": "./dist/types/index.d.ts",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
-    ".": {
-      "types": "./dist/types/index.d.ts",
-      "require": "./dist/cjs/index.cjs",
-      "import": "./dist/esm/index.mjs",
-      "default": "./dist/cjs/index.cjs"
-    }
+    "import": "./dist/index.js",
+    "types": "./dist/index.d.ts"
   },
   "files": [
     "dist",
@@ -42,7 +38,7 @@
   ],
   "scripts": {
     "test": "jest",
-    "build": "tsc -b tsconfig.cjs.json tsconfig.esm.json tsconfig.types.json && node fixExt.js",
+    "build": "tsc --project tsconfig.src.json",
     "lint": "eslint . --ext ts --report-unused-disable-directives --max-warnings 0"
   },
   "devDependencies": {
